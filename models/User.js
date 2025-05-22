@@ -139,7 +139,7 @@ const userSchema = new mongoose.Schema({
   
   // Course progress tracking
   courseProgress: [{
-    courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },
+    courseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Course' },  
     completedChapters: [{ type: mongoose.Schema.Types.ObjectId }], // Array of completed chapter IDs
     chapterWatchTimes: [{
       chapterId: { type: mongoose.Schema.Types.ObjectId },
@@ -162,7 +162,16 @@ const userSchema = new mongoose.Schema({
     }],
     bestScore: { type: Number, default: 0, min: 0, max: 100 },
     passed: { type: Boolean, default: false },
-    lastAttemptAt: { type: Date, default: Date.now }
+    lastAttemptAt: { type: Date, default: Date.now },
+    // Progressive restriction fields
+    totalAttempts: { type: Number, default: 0 },
+    nextAttemptAllowedAt: { type: Date, default: null },
+    mustReWatchVideo: { type: Boolean, default: false },
+    videoReWatchedAt: { type: Date, default: null },
+    instructorApprovalRequired: { type: Boolean, default: false },
+    instructorApprovalGranted: { type: Boolean, default: false },
+    instructorApprovalGrantedAt: { type: Date, default: null },
+    instructorApprovalGrantedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }]
 }, { timestamps: true });
 

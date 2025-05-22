@@ -191,6 +191,9 @@ const getCourseProgress = async (req, res) => {
     }, 0);
 
     if (!courseProgress) {
+      // Get quiz progress even when no course progress exists
+      const quizProgress = user.quizProgress?.filter(qp => qp.courseId.toString() === courseId) || [];
+      
       return res.status(200).json({
         success: true,
         data: {
@@ -198,10 +201,14 @@ const getCourseProgress = async (req, res) => {
           completedChapters: [],
           overallProgress: 0,
           totalChapters: course.chapters.length,
-          totalVideos: totalVideos
+          totalVideos: totalVideos,
+          quizProgress: quizProgress
         }
       });
     }
+
+    // Get quiz progress for this course
+    const quizProgress = user.quizProgress?.filter(qp => qp.courseId.toString() === courseId) || [];
 
     res.status(200).json({
       success: true,
@@ -211,7 +218,8 @@ const getCourseProgress = async (req, res) => {
         overallProgress: courseProgress.overallProgress,
         totalChapters: course.chapters.length,
         totalVideos: totalVideos,
-        lastAccessedAt: courseProgress.lastAccessedAt
+        lastAccessedAt: courseProgress.lastAccessedAt,
+        quizProgress: quizProgress // Include quiz progress for frontend logic
       }
     });
 

@@ -79,7 +79,7 @@ app.use('/api/payment-methods', paymentMethodRoutes);
 app.use('/api/chats', chatRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/progress', progressRoutes);
-app.use('/api/quiz', quizProgressRoutes);
+app.use('/api/quiz-progress', quizProgressRoutes);
 
 // Sample Route
 app.get('/', (req, res) => {

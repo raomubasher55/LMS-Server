@@ -556,3 +556,74 @@ exports.getAllUsers = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+// Get courses statistics for admin dashboard
+exports.coursesState = async (req, res) => {
+  try {
+    const [
+      totalCourses,
+      publishedCourses,
+      pendingCourses,
+      draftCourses,
+      totalEnrollments,
+      totalRevenue
+    ] = await Promise.all([
+      Course.countDocuments(),
+      Course.countDocuments({ status: 'published' }),
+      Course.countDocuments({ status: 'pending' }),
+      Course.countDocuments({ status: 'draft' }),
+      User.aggregate([
+        { $unwind: '$purchasedCourses' },
+        { $count: 'total' }
+      ]).then(result => result[0]?.total || 0),
+      Order.aggregate([
+        { $match: { paymentStatus: 'completed', status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]).then(result => result[0]?.total || 0)
+    ]);
+
+    // Get course distribution by category
+    const coursesByCategory = await Course.aggregate([
+      { $match: { status: 'published' } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+
+    // Get recent course activity
+    const recentCourses = await Course.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('instructor', 'firstName lastName')
+      .select('title status createdAt instructor bannerImage');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        overview: {
+          totalCourses,
+          publishedCourses,
+          pendingCourses,
+          draftCourses,
+          totalEnrollments,
+          totalRevenue
+        },
+        coursesByCategory,
+        recentCourses: recentCourses.map(course => ({
+          ...course.toObject(),
+          instructorName: course.instructor ? 
+            `${course.instructor.firstName} ${course.instructor.lastName}` : 
+            'Unknown'
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error("Error fetching courses stats:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch courses statistics",
+      error: error.message 
+    });
+  }
+};

@@ -6,7 +6,14 @@ const {
   getQuizStatus,
   getUserQuizAttempts,
   getAllUserQuizAttempts,
-  getQuizSummary
+  getQuizSummary,
+  checkQuizAttemptAllowed,
+  // Instructor Dashboard endpoints
+  getInstructorQuizAnalytics,
+  getInstructorStudentProgress,
+  resetStudentQuizProgress,
+  // Migration
+  migrateQuizProgressData
 } = require('../controllers/quizProgressController');
 
 // All quiz routes require authentication
@@ -36,5 +43,32 @@ router.get('/attempts-all', getAllUserQuizAttempts);
 // @desc    Get quiz summary statistics for a user
 // @access  Private
 router.get('/summary', getQuizSummary);
+
+// @route   GET /api/quiz/attempt-allowed/:courseId/:chapterId
+// @desc    Check if quiz attempt is allowed (progressive restrictions)
+// @access  Private
+router.get('/attempt-allowed/:courseId/:chapterId', checkQuizAttemptAllowed);
+
+// ========== INSTRUCTOR DASHBOARD ROUTES ==========
+
+// @route   GET /api/quiz/instructor/analytics
+// @desc    Get comprehensive quiz analytics for instructor's courses
+// @access  Private (Instructor only)
+router.get('/instructor/analytics', getInstructorQuizAnalytics);
+
+// @route   GET /api/quiz/instructor/student-progress
+// @desc    Get detailed student progress for instructor's courses
+// @access  Private (Instructor only)
+router.get('/instructor/student-progress', getInstructorStudentProgress);
+
+// @route   POST /api/quiz/instructor/reset-progress
+// @desc    Reset student quiz progress (bulk action)
+// @access  Private (Instructor only)
+router.post('/instructor/reset-progress', resetStudentQuizProgress);
+
+// @route   POST /api/quiz-progress/migrate-data
+// @desc    One-time migration to fix quiz progress data
+// @access  Private (Admin only - temporary route)
+router.post('/migrate-data', migrateQuizProgressData);
 
 module.exports = router;
