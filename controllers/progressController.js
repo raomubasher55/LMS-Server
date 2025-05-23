@@ -70,6 +70,11 @@ const markVideoCompleted = async (req, res) => {
     if (!courseProgress.completedChapters.includes(chapterId)) {
       courseProgress.completedChapters.push(chapterId);
     }
+    
+    // Auto-complete chapter if it has no quiz (since video is now complete)
+    if (!chapter.quiz || chapter.quiz.length === 0) {
+      console.log(`Auto-completing chapter ${chapterId} - no quiz required`);
+    }
 
     // Calculate overall progress based on videos, quizzes, and assignments
     const totalChapters = course.chapters.length;
@@ -79,37 +84,47 @@ const markVideoCompleted = async (req, res) => {
     const quizProgressData = user.quizProgress?.filter(qp => qp.courseId.toString() === courseId) || [];
     const passedQuizzes = quizProgressData.filter(qp => qp.passed).length;
     
-    // Get assignment submissions (assuming they exist in user model)
-    // This is a simplified calculation - you might want to check actual assignment completion
+    // Get assignment submissions
     const totalAssignments = course.assignments?.length || 0;
-    const submittedAssignments = user.submittedAssignments?.filter(sa => 
-      course.assignments?.some(a => a.toString() === sa.assignment?.toString())
-    ).length || 0;
     
-    // Calculate weighted progress
-    // 60% videos, 30% quizzes, 10% assignments
-    let videoWeight = 0.6;
-    let quizWeight = 0.3;
-    let assignmentWeight = 0.1;
+    // Get actual submitted assignments for this course
+    const Submission = require('../models/Submission');
+    const submittedAssignments = await Submission.countDocuments({
+      student: userId,
+      assignment: { $in: course.assignments || [] },
+      status: { $in: ['submitted', 'graded'] }
+    });
     
-    // Adjust weights if no quizzes or assignments exist
-    if (totalAssignments === 0 && quizProgressData.length === 0) {
-      videoWeight = 1.0;
-      quizWeight = 0;
-      assignmentWeight = 0;
-    } else if (totalAssignments === 0) {
+    // Calculate total possible quiz chapters (chapters that have quizzes)
+    const totalQuizChapters = course.chapters.filter(ch => ch.quiz && ch.quiz.length > 0).length;
+    
+    // Calculate weighted progress based on what exists in the course
+    let videoWeight = 1.0;
+    let quizWeight = 0;
+    let assignmentWeight = 0;
+    
+    // Adjust weights based on course content
+    if (totalQuizChapters > 0 && totalAssignments > 0) {
+      // Course has both quizzes and assignments
+      videoWeight = 0.6;
+      quizWeight = 0.3;
+      assignmentWeight = 0.1;
+    } else if (totalQuizChapters > 0) {
+      // Course has quizzes but no assignments
       videoWeight = 0.7;
       quizWeight = 0.3;
       assignmentWeight = 0;
-    } else if (quizProgressData.length === 0) {
+    } else if (totalAssignments > 0) {
+      // Course has assignments but no quizzes
       videoWeight = 0.9;
       quizWeight = 0;
       assignmentWeight = 0.1;
     }
+    // If course has neither quizzes nor assignments, videoWeight remains 1.0
     
     // Calculate progress components
     const videoProgress = totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0;
-    const quizProgressPercent = quizProgressData.length > 0 ? (passedQuizzes / quizProgressData.length) * 100 : 0;
+    const quizProgressPercent = totalQuizChapters > 0 ? (passedQuizzes / totalQuizChapters) * 100 : 0;
     const assignmentProgress = totalAssignments > 0 ? (submittedAssignments / totalAssignments) * 100 : 0;
     
     // Calculate weighted overall progress

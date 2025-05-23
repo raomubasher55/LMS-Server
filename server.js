@@ -40,7 +40,21 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
+// Serve static files with proper headers
+app.use("/uploads", express.static(path.join(__dirname, "public", "uploads"), {
+  setHeaders: (res, path) => {
+    // Set CORS headers for file downloads
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    
+    // Set content-disposition for downloads
+    if (path.includes('/pdfs/') || path.includes('/certificates/')) {
+      const filename = path.split('/').pop();
+      res.header('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+  }
+}));
 
 // Routes
 const userAuth = require('./routes/authRoutes');
