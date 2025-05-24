@@ -21,6 +21,7 @@ exports.getUserChats = async (req, res) => {
     const chats = await Chat.find({ participants: userId })
       .populate('participants', 'firstName lastName profile role')
       .populate('course', 'title')
+      .populate('messages.sender', '_id')
       .sort({ updatedAt: -1 });
 
     // Handle case where no chats exist (this is normal for new users)
@@ -39,12 +40,19 @@ exports.getUserChats = async (req, res) => {
         p => p._id && p._id.toString() !== userId
       );
 
+      // Calculate unread count for this chat
+      const unreadCount = chat.messages.filter(message => 
+        message.sender.toString() !== userId && 
+        !message.readBy.includes(userId)
+      ).length;
+
       return {
         _id: chat._id,
         participants: chat.participants,
         otherParticipants: otherParticipants,
         course: chat.course,
         lastMessage: chat.lastMessage,
+        unreadCount: unreadCount,
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt
       };
@@ -71,12 +79,35 @@ exports.getChatMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
     const userId = req.user.id;
+    
+    // Validate chatId
+    if (!chatId || chatId === 'undefined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chat ID is required and must be valid'
+      });
+    }
+    
+    // Validate ObjectId format
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid chat ID format'
+      });
+    }
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50; // Default 50 messages per page
+    const skip = (page - 1) * limit;
 
     // Find the chat and verify the user is a participant
     const chat = await Chat.findOne({
       _id: chatId,
       participants: userId
-    }).populate('messages.sender', 'firstName lastName profile role');
+    }).populate('participants', 'firstName lastName profile role')
+      .populate('course', 'title bannerImage');
 
     if (!chat) {
       return res.status(404).json({
@@ -85,21 +116,56 @@ exports.getChatMessages = async (req, res) => {
       });
     }
 
-    // Mark all messages as read by this user
-    chat.messages.forEach(message => {
+    // Get total message count
+    const totalMessages = chat.messages.length;
+    
+    // Get paginated messages (most recent first, then reverse for chronological order)
+    // We want the most recent messages, so we slice from the end
+    const startIndex = Math.max(0, totalMessages - skip - limit);
+    const endIndex = totalMessages - skip;
+    
+    const paginatedMessages = chat.messages
+      .slice(startIndex, endIndex)
+      .reverse(); // Reverse to get chronological order (oldest first)
+
+    // Populate sender information for paginated messages
+    await Chat.populate(paginatedMessages, {
+      path: 'sender',
+      select: 'firstName lastName profile role'
+    });
+
+    // Mark messages as read by this user (only the fetched messages)
+    let hasUpdates = false;
+    paginatedMessages.forEach(message => {
       if (message.sender._id.toString() !== userId && !message.readBy.includes(userId)) {
         message.readBy.push(userId);
+        hasUpdates = true;
       }
     });
-    await chat.save();
+    
+    if (hasUpdates) {
+      await chat.save();
+    }
+
+    // Calculate pagination info
+    const hasMore = startIndex > 0;
+    const nextPage = hasMore ? page + 1 : null;
 
     res.status(200).json({
       success: true,
       data: {
         chatId: chat._id,
         participants: chat.participants,
-        messages: chat.messages,
-        course: chat.course
+        messages: paginatedMessages,
+        course: chat.course,
+        pagination: {
+          currentPage: page,
+          totalMessages,
+          messagesPerPage: limit,
+          hasMore,
+          nextPage,
+          totalPages: Math.ceil(totalMessages / limit)
+        }
       }
     });
   } catch (error) {
@@ -154,15 +220,15 @@ exports.createOrGetChat = async (req, res) => {
       await chat.save();
     }
 
-    // Return the chat
+    // Populate the chat data
+    const populatedChat = await Chat.findById(chat._id)
+      .populate('participants', 'firstName lastName profile role')
+      .populate('course', 'title bannerImage');
+    
+    // Return the chat with proper structure
     res.status(200).json({
       success: true,
-      data: {
-        chatId: chat._id,
-        participants: chat.participants,
-        messages: chat.messages,
-        course: chat.course
-      }
+      data: populatedChat
     });
   } catch (error) {
     console.error('Error creating or getting chat:', error);
@@ -179,10 +245,38 @@ exports.createOrGetChat = async (req, res) => {
 exports.sendMessage = async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content, attachments } = req.body;
+    const { content } = req.body;
     const userId = req.user.id;
+    
+    // Validate chatId
+    if (!chatId || chatId === 'undefined') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chat ID is required and must be valid'
+      });
+    }
+    
+    // Validate ObjectId format
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid chat ID format'
+      });
+    }
+    
+    // Process uploaded files
+    let attachments = [];
+    if (req.files && req.files.length > 0) {
+      attachments = req.files.map(file => ({
+        url: `/uploads/chat-attachments/${file.filename}`,
+        filename: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size
+      }));
+    }
 
-    if (!content && (!attachments || attachments.length === 0)) {
+    if (!content && attachments.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Message content or attachments are required'
@@ -214,6 +308,13 @@ exports.sendMessage = async (req, res) => {
     // Add the message to the chat
     chat.messages.push(newMessage);
     await chat.save();
+    
+    console.log('Message saved to database:', {
+      chatId: chat._id,
+      messageId: newMessage._id,
+      content: newMessage.content,
+      sender: newMessage.sender
+    });
 
     // Get the newly added message with populated sender
     const populatedChat = await Chat.findById(chatId)
@@ -226,14 +327,43 @@ exports.sendMessage = async (req, res) => {
       .filter(p => p._id.toString() !== userId)
       .map(p => p._id);
 
-    await createNotification({
-      title: 'New message',
-      message: `New message from ${req.user.firstName} ${req.user.lastName}`,
-      type: 'message',
-      recipients: otherParticipants,
-      chatId: chat._id
-    });
+    // Get sender info
+    const sender = await User.findById(userId).select('firstName lastName role');
+    
+    // Create notification for each recipient
+    for (const recipientId of otherParticipants) {
+      // Get recipient info to determine the correct message page
+      const recipient = await User.findById(recipientId).select('role');
+      let messagePageLink;
+      
+      switch (recipient.role) {
+        case 'instructor':
+          messagePageLink = '/dashboards/instructor-message';
+          break;
+        case 'admin':
+          messagePageLink = '/dashboards/admin-message';
+          break;
+        case 'student':
+        default:
+          messagePageLink = '/dashboards/student-message';
+          break;
+      }
+      
+      await createNotification({
+        userId: recipientId,
+        name: `${sender.firstName} ${sender.lastName}`,
+        title: `New message from ${sender.firstName} ${sender.lastName}`,
+        type: 'message',
+        link: messagePageLink
+      });
+    }
 
+    console.log('Sending response:', {
+      success: true,
+      message: 'Message sent successfully',
+      data: sentMessage
+    });
+    
     res.status(201).json({
       success: true,
       message: 'Message sent successfully',
@@ -515,19 +645,67 @@ exports.createCourseChat = async (req, res) => {
     const { instructorId, courseId } = req.body;
     const studentId = req.user.id;
 
-    // Verify student is enrolled in the course (check both purchased and enrolled courses)
+    // Validate required fields
+    if (!instructorId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Instructor ID and Course ID are required'
+      });
+    }
+
+    // Validate ObjectId format
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(instructorId) || !mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid instructor or course ID format'
+      });
+    }
+
+    // Check if student exists and get enrollment data
     const student = await User.findById(studentId);
-    const isPurchased = student.purchasedCourses.some(
-      pc => pc.course.toString() === courseId
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Check if instructor exists and has correct role
+    const instructor = await User.findById(instructorId);
+    if (!instructor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Instructor not found'
+      });
+    }
+
+    if (instructor.role !== 'instructor') {
+      return res.status(403).json({
+        success: false,
+        message: 'User is not an instructor'
+      });
+    }
+
+    // Verify student is enrolled in the course (check both purchased and enrolled courses)
+    const isPurchased = student.purchasedCourses && student.purchasedCourses.some(
+      pc => pc.course && pc.course.toString() === courseId
     );
-    const isEnrolled = student.enrolledCourses.some(
-      courseRef => courseRef.toString() === courseId
+    const isEnrolled = student.enrolledCourses && student.enrolledCourses.some(
+      courseRef => courseRef && courseRef.toString() === courseId
     );
 
     if (!isPurchased && !isEnrolled) {
       return res.status(403).json({
         success: false,
-        message: 'You are not enrolled in this course'
+        message: 'You are not enrolled in this course. Please enroll or purchase the course first.',
+        details: {
+          courseId,
+          enrollmentStatus: {
+            purchased: isPurchased,
+            enrolled: isEnrolled
+          }
+        }
       });
     }
 
@@ -537,7 +715,24 @@ exports.createCourseChat = async (req, res) => {
     if (!course) {
       return res.status(403).json({
         success: false,
-        message: 'Invalid instructor for this course'
+        message: 'This instructor does not teach the specified course',
+        details: {
+          courseId,
+          instructorId,
+          instructorName: `${instructor.firstName} ${instructor.lastName}`
+        }
+      });
+    }
+
+    // Check if course is active/published
+    if (course.status !== 'approved' && course.status !== 'published') {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot start chat for unpublished course',
+        details: {
+          courseStatus: course.status,
+          courseName: course.title
+        }
       });
     }
 
@@ -572,6 +767,94 @@ exports.createCourseChat = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to create chat',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Get all instructors for admin to chat with
+ */
+exports.getAdminChatContacts = async (req, res) => {
+  try {
+    // Get all users with instructor role
+    const instructors = await User.find({ role: 'instructor' })
+      .select('firstName lastName profile email')
+      .sort({ firstName: 1, lastName: 1 });
+
+    if (!instructors || instructors.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: 'No instructors found'
+      });
+    }
+
+    // Format response
+    const formattedInstructors = instructors.map(instructor => ({
+      _id: instructor._id,
+      firstName: instructor.firstName,
+      lastName: instructor.lastName,
+      fullName: `${instructor.firstName} ${instructor.lastName}`,
+      profile: instructor.profile,
+      email: instructor.email,
+      role: 'instructor'
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedInstructors
+    });
+
+  } catch (error) {
+    console.error('Error fetching admin chat contacts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch instructors',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Get admin contacts for instructor to chat with
+ */
+exports.getInstructorAdminContacts = async (req, res) => {
+  try {
+    // Get all users with admin role
+    const admins = await User.find({ role: 'admin' })
+      .select('firstName lastName profile email')
+      .sort({ firstName: 1, lastName: 1 });
+
+    if (!admins || admins.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: 'No administrators found'
+      });
+    }
+
+    // Format response
+    const formattedAdmins = admins.map(admin => ({
+      _id: admin._id,
+      firstName: admin.firstName,
+      lastName: admin.lastName,
+      fullName: `${admin.firstName} ${admin.lastName}`,
+      profile: admin.profile,
+      email: admin.email,
+      role: 'admin'
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedAdmins
+    });
+
+  } catch (error) {
+    console.error('Error fetching instructor admin contacts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch administrators',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

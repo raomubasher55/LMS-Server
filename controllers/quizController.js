@@ -1,5 +1,6 @@
 const Course = require('../models/Course');
 const Quiz = require('../models/quiz');
+const User = require('../models/User');
 const mongoose = require('mongoose');
 
 exports.createQuiz = async (req, res) => {
@@ -75,6 +76,135 @@ exports.createQuiz = async (req, res) => {
 
   } catch (error) {
     console.error('Quiz creation error:', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+exports.getAllAttempts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find the user and populate course details
+    const user = await User.findById(userId)
+      .populate({
+        path: 'quizProgress.courseId',
+        select: 'title thumbnail'
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found'
+      });
+    }
+
+    // Transform quiz progress data for frontend
+    const quizAttempts = [];
+
+    for (const progress of user.quizProgress) {
+      // Get course details
+      const course = await Course.findById(progress.courseId).select('title thumbnail chapters');
+      
+      if (!course) continue;
+
+      // Find the chapter details
+      const chapter = course.chapters.find(ch => ch._id.equals(progress.chapterId));
+      
+      if (!chapter) continue;
+
+      // Add each attempt
+      for (const attempt of progress.attempts) {
+        quizAttempts.push({
+          _id: attempt._id,
+          courseId: progress.courseId,
+          courseName: course.title,
+          courseThumbnail: course.thumbnail,
+          chapterId: progress.chapterId,
+          chapterTitle: chapter.title,
+          score: attempt.score,
+          passed: attempt.passed,
+          answers: attempt.answers,
+          attemptedAt: attempt.attemptedAt,
+          totalAttempts: progress.totalAttempts,
+          bestScore: progress.bestScore
+        });
+      }
+    }
+
+    // Sort by attempt date (newest first)
+    quizAttempts.sort((a, b) => new Date(b.attemptedAt) - new Date(a.attemptedAt));
+
+    return res.status(200).json({
+      success: true,
+      data: quizAttempts,
+      totalAttempts: quizAttempts.length
+    });
+
+  } catch (error) {
+    console.error('Get quiz attempts error:', error);
+    return res.status(500).json({
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+exports.getQuizSummary = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find the user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found'
+      });
+    }
+
+    // Calculate quiz summary statistics
+    let totalQuizzes = 0;
+    let totalAttempts = 0;
+    let passedQuizzes = 0;
+    let totalScore = 0;
+    let bestScores = [];
+
+    for (const progress of user.quizProgress) {
+      totalQuizzes++;
+      totalAttempts += progress.attempts.length;
+      
+      if (progress.passed) {
+        passedQuizzes++;
+      }
+
+      // Add best score to array for average calculation
+      bestScores.push(progress.bestScore);
+      totalScore += progress.bestScore;
+    }
+
+    const averageScore = totalQuizzes > 0 ? Math.round(totalScore / totalQuizzes) : 0;
+    const passRate = totalQuizzes > 0 ? Math.round((passedQuizzes / totalQuizzes) * 100) : 0;
+
+    const summary = {
+      totalQuizzes,
+      totalAttempts, 
+      passedQuizzes,
+      failedQuizzes: totalQuizzes - passedQuizzes,
+      averageScore,
+      passRate,
+      highestScore: bestScores.length > 0 ? Math.max(...bestScores) : 0,
+      lowestScore: bestScores.length > 0 ? Math.min(...bestScores) : 0
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: summary
+    });
+
+  } catch (error) {
+    console.error('Get quiz summary error:', error);
     return res.status(500).json({
       message: 'Internal server error',
       error: error.message

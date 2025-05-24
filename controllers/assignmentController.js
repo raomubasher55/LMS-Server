@@ -1,5 +1,7 @@
 const Assignment = require('../models/Assignment');
 const Course = require('../models/Course');
+const Submission = require('../models/Submission');
+const User = require('../models/User');
 const path = require('path');
 const { saveFiles } = require('../middleware/multer'); 
 
@@ -276,6 +278,90 @@ exports.deleteAssignment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete assignment'
+    });
+  }
+};
+
+// Get all assignments for a student across all enrolled courses
+exports.getStudentAssignments = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+
+    // Find the student and get their enrolled courses
+    const student = await User.findById(studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Get enrolled course IDs from both enrolledCourses and purchasedCourses
+    const enrolledCourseIds = student.enrolledCourses || [];
+    const purchasedCourseIds = (student.purchasedCourses || []).map(pc => pc.course);
+    const allCourseIds = [...new Set([...enrolledCourseIds, ...purchasedCourseIds])];
+
+    if (allCourseIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get all assignments for enrolled courses
+    const assignments = await Assignment.find({ course: { $in: allCourseIds } })
+      .populate('course', 'title')
+      .sort({ dueDate: 1 }); // Sort by due date (earliest first)
+
+    // Get submissions for this student
+    const submissions = await Submission.find({
+      student: studentId,
+      assignment: { $in: assignments.map(a => a._id) }
+    });
+
+    // Create a map of assignment submissions
+    const submissionMap = new Map();
+    submissions.forEach(sub => {
+      submissionMap.set(sub.assignment.toString(), sub);
+    });
+
+    // Format the response with submission status
+    const assignmentsWithStatus = assignments.map(assignment => {
+      const submission = submissionMap.get(assignment._id.toString());
+      
+      let status = 'pending';
+
+      if (submission) {
+        status = submission.status; // 'submitted', 'graded', 'resubmit'
+      }
+
+      return {
+        _id: assignment._id,
+        title: assignment.title,
+        description: assignment.description,
+        maxPoints: assignment.maxPoints,
+        course: assignment.course,
+        status,
+        submission: submission ? {
+          _id: submission._id,
+          submittedAt: submission.submittedAt,
+          grade: submission.grade,
+          comment: submission.comment
+        } : null,
+        files: assignment.files
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: assignmentsWithStatus
+    });
+
+  } catch (error) {
+    console.error('Error fetching student assignments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch assignments'
     });
   }
 };

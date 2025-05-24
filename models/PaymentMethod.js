@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const paymentMethodSchema = new mongoose.Schema({
-  user: {
+  userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
@@ -11,19 +11,19 @@ const paymentMethodSchema = new mongoose.Schema({
     enum: ['credit_card', 'paypal', 'bank_account'],
     required: true
   },
-  // For credit cards
+  // Credit card details
   cardDetails: {
     lastFour: String,
-    brand: String,
-    expiryMonth: Number,
-    expiryYear: Number,
+    brand: String, // visa, mastercard, amex, etc.
+    expiryMonth: String,
+    expiryYear: String,
     nameOnCard: String
   },
-  // For PayPal
+  // PayPal details
   paypalDetails: {
     email: String
   },
-  // For bank accounts
+  // Bank account details
   bankDetails: {
     accountName: String,
     lastFour: String,
@@ -33,22 +33,23 @@ const paymentMethodSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // This would be the token or ID from payment processor (e.g. Stripe)
   paymentToken: {
     type: String,
-    required: true
+    required: true // This would be the token from payment processor
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  isActive: {
+    type: Boolean,
+    default: true
   }
+}, {
+  timestamps: true
 });
 
-// Ensure a user can have only one default payment method
+// Ensure only one default payment method per user
 paymentMethodSchema.pre('save', async function(next) {
-  if (this.isDefault) {
+  if (this.isDefault && this.isModified('isDefault')) {
     await this.constructor.updateMany(
-      { user: this.user, _id: { $ne: this._id } },
+      { userId: this.userId, _id: { $ne: this._id } },
       { isDefault: false }
     );
   }

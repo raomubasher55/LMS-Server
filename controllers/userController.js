@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const Course = require('../models/Course');
 const sendEmail = require('../utils/sendEmail');
 const mongoose = require('mongoose')
 
@@ -185,6 +186,140 @@ exports.getProfile = async (req, res) => {
   } catch (error) {
     console.error("Error fetching profile:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Get student order history (purchased courses)
+exports.getStudentOrderHistory = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+
+    // Find the student and populate purchased courses
+    const student = await User.findById(studentId)
+      .populate({
+        path: 'purchasedCourses.course',
+        select: 'title thumbnail instructor price'
+      });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Format the order history data
+    const orderHistory = await Promise.all(
+      student.purchasedCourses.map(async (purchase) => {
+        let courseData = purchase.course;
+        
+        // If course is not populated (just ObjectId), fetch it manually
+        if (!courseData.title) {
+          courseData = await Course.findById(purchase.course)
+            .select('title thumbnail instructor price')
+            .populate('instructor', 'firstName lastName');
+        }
+
+        return {
+          orderId: purchase._id,
+          orderDate: purchase.purchasedAt,
+          course: {
+            _id: courseData._id,
+            title: courseData.title,
+            thumbnail: courseData.thumbnail,
+            instructor: courseData.instructor,
+            originalPrice: courseData.price
+          },
+          paymentAmount: purchase.paymentAmount,
+          paymentMethod: purchase.paymentMethod,
+          transactionId: purchase.transactionId,
+          progress: purchase.progress || 0,
+          lastAccessed: purchase.lastAccessed,
+          status: 'completed'
+        };
+      })
+    );
+
+    // Sort by purchase date (newest first)
+    orderHistory.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+
+    res.status(200).json({
+      success: true,
+      data: orderHistory,
+      totalOrders: orderHistory.length
+    });
+
+  } catch (error) {
+    console.error('Error fetching order history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch order history'
+    });
+  }
+};
+
+/**
+ * Get unread message count for user
+ */
+exports.getUnreadMessageCount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const Chat = require('../models/Chat');
+
+    // Find all chats where user is a participant
+    const chats = await Chat.find({
+      participants: userId
+    });
+
+    let unreadCount = 0;
+
+    // Count unread messages across all chats
+    chats.forEach(chat => {
+      chat.messages.forEach(message => {
+        // Count message as unread if:
+        // 1. It's not sent by the current user
+        // 2. The current user is not in the readBy array
+        if (message.sender.toString() !== userId && !message.readBy.includes(userId)) {
+          unreadCount++;
+        }
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        unreadCount
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching unread message count:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch unread message count',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Get all students (admin only)
+exports.getAllStudents = async (req, res) => {
+  try {
+    const students = await User.find({ role: 'student' })
+      .select('firstName lastName email profile role createdAt')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: students,
+      count: students.length
+    });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch students',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

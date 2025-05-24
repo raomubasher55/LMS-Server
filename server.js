@@ -74,6 +74,7 @@ const chatRoutes = require('./routes/chatRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const quizProgressRoutes = require('./routes/quizProgressRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
 const { getLatestNotices } = require('./services/noticeService.js');
 
 
@@ -94,6 +95,7 @@ app.use('/api/chats', chatRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/quiz-progress', quizProgressRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // Sample Route
 app.get('/', (req, res) => {
@@ -145,12 +147,13 @@ io.on('connection', (socket) => {
 
   // Handle new messages
   socket.on('send_message', (data) => {
-    const { chatId, message, senderId } = data;
+    const { chatId, content, senderId, attachments = [] } = data;
     // Broadcast message to all users in the chat room
     socket.to(chatId).emit('new_message', {
       chatId,
-      message,
+      content,
       senderId,
+      attachments,
       timestamp: new Date()
     });
   });

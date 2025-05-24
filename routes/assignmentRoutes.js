@@ -5,7 +5,8 @@ const {
   createAssignment, 
   getCourseAssignments,
   updateAssignment,
-  deleteAssignment
+  deleteAssignment,
+  getStudentAssignments
  } = require('../controllers/assignmentController');
 const { upload } = require('../middleware/multer');
 const { authMiddleware } = require('../middleware/authMiddleware');
@@ -20,6 +21,9 @@ router.post(
 
 // routes/assignmentRoutes.js
 router.get('/instructor/assignments', authMiddleware, getInstructorAssignments);
+
+// Get all assignments for a student across enrolled courses
+router.get('/student/assignments', authMiddleware, getStudentAssignments);
 
 // Get all assignments for a course
 router.get('/:courseId/assignments', authMiddleware, getCourseAssignments);
