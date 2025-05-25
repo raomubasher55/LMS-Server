@@ -75,6 +75,9 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const quizProgressRoutes = require('./routes/quizProgressRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
+const blogRoutes = require('./routes/blogRoutes');
+const publicBlogRoutes = require('./routes/publicBlogRoutes');
+const withdrawalRoutes = require('./routes/withdrawalRoutes');
 const { getLatestNotices } = require('./services/noticeService.js');
 
 
@@ -96,6 +99,9 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/quiz-progress', quizProgressRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/admin/blogs', blogRoutes);
+app.use('/api/blogs', publicBlogRoutes);
+app.use('/api/withdrawals', withdrawalRoutes);
 
 // Sample Route
 app.get('/', (req, res) => {
