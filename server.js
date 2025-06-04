@@ -35,11 +35,12 @@ const allowedOrigins = [
 //   },
 //   credentials: true
 // }));
+app.use(cors()); // Handles all OPTIONS requests
 app.use((req, res, next) => {
   console.log('Incoming origin:', req.headers.origin);
   next();
 });
-app.options('*', cors()); // Handles all OPTIONS requests
+
 
 // Additional headers (if needed)
 // app.use((req, res, next) => {
