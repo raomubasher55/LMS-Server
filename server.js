@@ -23,27 +23,29 @@ const allowedOrigins = [
 ];
 
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
+//     if (allowedOrigins.indexOf(origin) !== -1) {
+//       callback(null, true);
+//     } else {
+//       callback(new Error('Not allowed by CORS'));
+//     }
+//   },
+//   credentials: true
+// }));
+app.use(cors());
+app.options('*', cors()); // Handles all OPTIONS requests
 
 // Additional headers (if needed)
-app.use((req, res, next) => {
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept"
-  );
-  next();
-});
+// app.use((req, res, next) => {
+//   res.header(
+//     "Access-Control-Allow-Headers",
+//     "Origin, X-Requested-With, Content-Type, Accept"
+//   );
+//   next();
+// });
 
 // Serve static files with proper headers
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads"), {
@@ -126,7 +128,7 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST" , "PUT" , "DELETE" , "PATCH"],
     credentials: true
   }
 });
