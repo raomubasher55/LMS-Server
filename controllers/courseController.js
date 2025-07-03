@@ -86,12 +86,12 @@ exports.createCourse = async (req, res) => {
           chapter.isLockedUntilQuizPass === "true" || chapter.isLockedUntilQuizPass === true,
       };
 
-     // If there's a video attached to this chapter
-     if (chapter.video?.file) {
+     // If there's a video URL provided for this chapter
+     if (chapter.video?.url) {
       chapterData.video = {
-        url: saveFiles(chapter.video.file, "videos")[0], // Save the video file and get the URL
+        url: chapter.video.url, // Use the provided video URL
         duration: parseInt(chapter.video.duration, 10) || 0, // Save the duration
-        title: chapter.video.title || chapter.video.file.originalname, // Save the title
+        title: chapter.video.title || "Chapter Video", // Save the title
       };
     }
 

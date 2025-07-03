@@ -13,7 +13,7 @@ const courseSchema = new mongoose.Schema({
   benefits: { type: String, maxlength: 2000 },
   tags: [{ type: String }],
   startDate: { type: Date },
-  language: { type: String, default: "English" },
+  language: { type: String, enum: ["French", "English", "Français", "fr", "en"], default: "French" },
   bannerImage: String,
   pdfFiles: [{ url: String, title: String }],
   certificateFile: String,

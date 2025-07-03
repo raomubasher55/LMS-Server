@@ -32,10 +32,6 @@ const fileFilter = (req, file, cb) => {
     return cb(null, true);
   }
 
-  // ✅ Allow any chapterVideos[n]
-  if (/^chapterVideos\[\d+\]$/.test(fieldname) && /^video\/(mp4|webm|quicktime|ogg)$/.test(file.mimetype)) {
-    return cb(null, true);
-  }
 
   // ❌ If none match
   cb(new Error(`Invalid file type for ${file.fieldname}`), false);
@@ -62,15 +58,6 @@ const handleUploads = [
         console.log(`[${i}] ${file.fieldname} (${file.mimetype}) - ${file.originalname}`);
       });
 
-      const chapterVideos = {};  // This will store the uploaded files
-      req.files.forEach((file) => {
-        const match = file.fieldname.match(/^chapterVideos\[(\d+)\]$/);
-        if (match) {
-          const index = parseInt(match[1], 10);
-          chapterVideos[index] = file;
-        }
-      });
-
       // ✅ Parse the chapters from the request body
       let chapters = req.body.chapters;
 
@@ -86,28 +73,7 @@ const handleUploads = [
 
       if (!Array.isArray(chapters)) chapters = [];
 
-      // ✅ Attach video to each chapter and save the duration from chapterVideos
-      chapters.forEach((chapter, index) => {
-
-        // Ensure the chapter has a video if there's a corresponding file
-        const videoData = req.body.chapterVideos[index];
-        if (videoData) {
-          const videoFile = chapterVideos[index]; // Corresponding uploaded video file
-          const duration = videoData.duration || 0; // Duration from chapterVideos data
-          const title = videoData.title || videoFile.originalname; // Title from chapterVideos data or file name
-
-
-          // Add the video to the chapter
-          chapter.video = {
-            file: videoFile, // Attach the file to the video
-            duration: Number(duration),  // Ensure duration is a number
-            title: title,  // Assign the correct title
-          };
-        }
-      });
-
       req.body.chapters = chapters;
-
 
       next();
     } catch (error) {

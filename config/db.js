@@ -2,14 +2,13 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // Remove deprecated options
+    const conn = await mongoose.connect(process.env.MONGO_URI_LOCAL);
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('MongoDB connection failed:', error.message);
+    console.log('Trying to connect to:', process.env.MONGO_URI_LOCAL ? 'Cloud MongoDB' : 'No MONGO_URI found');
     process.exit(1); 
   }
 };

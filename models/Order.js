@@ -18,8 +18,9 @@ const orderSchema = new mongoose.Schema({
   },
   orderId: {
     type: String,
-    required: true,
-    unique: true
+    required: false,
+    unique: true,
+    sparse: true
   },
   amount: {
     type: Number,
@@ -38,7 +39,7 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: {
     type: String,
     required: true,
-    enum: ['credit_card', 'paypal', 'stripe', 'wallet', 'bank_transfer']
+    enum: ['credit_card', 'paypal', 'stripe', 'wallet', 'bank_transfer', 'maxicash']
   },
   paymentStatus: {
     type: String,
@@ -47,6 +48,7 @@ const orderSchema = new mongoose.Schema({
     default: 'pending'
   },
   transactionId: String, // Payment gateway transaction ID
+  reference: String, // Payment reference for tracking
   invoiceUrl: String, // Link to downloadable invoice
   couponUsed: {
     code: String,
