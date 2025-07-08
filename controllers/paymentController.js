@@ -4,15 +4,23 @@ const Order = require('../models/Order');
 const axios = require('axios');
 const crypto = require('crypto');
 
-// Maxicash configuration
+// Maxicash configuration - Production Environment
 const MAXICASH_CONFIG = {
-  merchantId: process.env.MAXICASH_MERCHANT_ID,
-  merchantPassword: process.env.MAXICASH_MERCHANT_PASSWORD,
-  apiUrl: process.env.MAXICASH_API_URL,
-  webapiUrl: process.env.MAXICASH_WEBAPI_URL,
+  merchantId: process.env.MAXICASH_MERCHANT_ID || '79315b61-d285-4241-89ff-d91a9b76e326',
+  merchantPassword: process.env.MAXICASH_MERCHANT_PASSWORD || '9b018bbace954b36998838c94e6b683c',
+  apiUrl: process.env.MAXICASH_API_URL || 'https://api.maxicashapp.com',
+  webapiUrl: process.env.MAXICASH_WEBAPI_URL || 'https://webapi.maxicashapp.com',
   currency: process.env.MAXICASH_CURRENCY || 'USD',
-  gatewayUrl: `${process.env.MAXICASH_API_URL}/PayEntryPost`
+  gatewayUrl: `${process.env.MAXICASH_API_URL || 'https://api.maxicashapp.com'}/PayEntryPost`
 };
+
+// Log configuration on startup
+console.log('=== MAXICASH CONFIGURATION ===');
+console.log('Merchant ID:', MAXICASH_CONFIG.merchantId);
+console.log('API URL:', MAXICASH_CONFIG.apiUrl);
+console.log('Gateway URL:', MAXICASH_CONFIG.gatewayUrl);
+console.log('Currency:', MAXICASH_CONFIG.currency);
+console.log('=============================');
 
 // Generate unique reference for payment
 const generatePaymentReference = () => {
@@ -140,6 +148,23 @@ const createPaymentSession = async (req, res) => {
       amount: order.amount
     });
 
+    // Validate merchant credentials before proceeding
+    if (!MAXICASH_CONFIG.merchantId || MAXICASH_CONFIG.merchantId === 'SET') {
+      console.log('ERROR: Maxicash Merchant ID is not properly configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Payment system configuration error: Merchant ID missing'
+      });
+    }
+
+    if (!MAXICASH_CONFIG.merchantPassword || MAXICASH_CONFIG.merchantPassword === 'SET') {
+      console.log('ERROR: Maxicash Merchant Password is not properly configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Payment system configuration error: Merchant Password missing'
+      });
+    }
+
     // Prepare Maxicash payment form data
     const paymentData = {
       PayType: 'MaxiCash',
@@ -163,7 +188,9 @@ const createPaymentSession = async (req, res) => {
       Currency: paymentData.Currency,
       Reference: paymentData.Reference,
       accepturl: paymentData.accepturl,
-      MerchantID: paymentData.MerchantID ? 'SET' : 'MISSING'
+      MerchantID: paymentData.MerchantID,
+      MerchantPassword: paymentData.MerchantPassword ? 'SET' : 'MISSING',
+      gatewayUrl: MAXICASH_CONFIG.gatewayUrl
     });
 
     console.log('=== PAYMENT SESSION CREATION SUCCESS ===');
@@ -633,6 +660,82 @@ const fixUserEnrollmentData = async (req, res) => {
   }
 };
 
+// Test Maxicash credentials
+const testMaxicashCredentials = async (req, res) => {
+  try {
+    console.log('=== TESTING MAXICASH CREDENTIALS ===');
+    
+    // Test with a dummy reference
+    const testReference = 'TEST_' + Date.now();
+    
+    const response = await axios.post(
+      `${MAXICASH_CONFIG.webapiUrl}/Integration/CheckPaymentStatusByReference`,
+      {
+        MerchantID: MAXICASH_CONFIG.merchantId,
+        MerchantPassword: MAXICASH_CONFIG.merchantPassword,
+        Reference: testReference,
+        TransactionID: ""
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+    
+    console.log('Maxicash API Response:', response.data);
+    
+    // Check if response indicates valid credentials
+    if (response.data && response.data.ResponseStatus) {
+      res.json({
+        success: true,
+        message: 'Maxicash credentials are valid',
+        data: {
+          merchantId: MAXICASH_CONFIG.merchantId,
+          responseStatus: response.data.ResponseStatus,
+          responseMessage: response.data.ResponseMessage || 'No message',
+          testReference: testReference
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid response from Maxicash API',
+        data: response.data
+      });
+    }
+    
+  } catch (error) {
+    console.error('Maxicash credentials test failed:', error.message);
+    
+    let errorMessage = 'Failed to test Maxicash credentials';
+    let errorDetails = {};
+    
+    if (error.response) {
+      errorMessage = `Maxicash API error: ${error.response.status}`;
+      errorDetails = {
+        status: error.response.status,
+        data: error.response.data
+      };
+      
+      // Check for specific error messages
+      if (error.response.data && typeof error.response.data === 'string') {
+        if (error.response.data.includes('Merchant Not Found') || 
+            error.response.data.includes('Invalid Merchant')) {
+          errorMessage = 'Merchant Not Found or Invalid Merchant credentials';
+        }
+      }
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: errorMessage,
+      error: errorDetails
+    });
+  }
+};
+
 // Get instructor order history with comprehensive details
 const getInstructorOrderHistory = async (req, res) => {
   try {
@@ -867,5 +970,6 @@ module.exports = {
   getPurchasedCourses,
   checkPaymentStatus,
   fixUserEnrollmentData,
-  getInstructorOrderHistory
+  getInstructorOrderHistory,
+  testMaxicashCredentials
 };

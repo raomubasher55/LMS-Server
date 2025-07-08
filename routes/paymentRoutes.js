@@ -8,7 +8,8 @@ const {
   getPurchasedCourses,
   checkPaymentStatus,
   fixUserEnrollmentData,
-  getInstructorOrderHistory
+  getInstructorOrderHistory,
+  testMaxicashCredentials
 } = require('../controllers/paymentController');
 const { authMiddleware } = require('../middleware/authMiddleware');
 
@@ -40,5 +41,8 @@ router.post('/fix-user-data', authMiddleware, fixUserEnrollmentData);
 
 // Get instructor order history
 router.get('/instructor/order-history', authMiddleware, getInstructorOrderHistory);
+
+// Test Maxicash credentials
+router.get('/test-maxicash', testMaxicashCredentials);
 
 module.exports = router;

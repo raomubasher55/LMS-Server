@@ -15,6 +15,7 @@ connectDB();
 // Middleware
 const allowedOrigins = [
   'http://localhost:3000',          
+  'http://localhost:3001',          
   'https://lms-project-zahid.netlify.app'  
 ];
 
