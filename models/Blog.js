@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const blogSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   title: { type: String, required: true },
-  slug: { type: String, required: true, unique: true },
+  slug: { type: String,},
   content: { type: String, required: true },
   excerpt: { type: String, maxlength: 500 },
   category: { type: String, default: "General" },

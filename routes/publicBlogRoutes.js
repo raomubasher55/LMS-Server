@@ -22,11 +22,12 @@ router.get("/", async (req, res) => {
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     const blogs = await Blog.find(filter)
-      .populate('author', 'firstName lastName profile bio skill instructorProfile')
+      .populate('author', 'firstName lastName profile bio skill instructorProfile profile')
       .select('-content') // Exclude full content for listing
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
 
     const total = await Blog.countDocuments(filter);
 

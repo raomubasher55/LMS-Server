@@ -38,6 +38,8 @@ exports.createBlog = async (req, res) => {
 
     const authorId = req.user.id;
 
+    console.log("The authoer id is " , authorId);
+
     // Process featured image if uploaded
     const featuredImagePath = req.files && req.files.find(f => f.fieldname === "featuredImage")
       ? saveFiles(req.files.find(f => f.fieldname === "featuredImage"), "blog-images")[0]
@@ -58,7 +60,7 @@ exports.createBlog = async (req, res) => {
     });
 
     await blog.save();
-    await blog.populate('author', 'name email');
+    await blog.populate('author', 'firstName lastName profile email ');
 
     res.status(201).json({
       success: true,
@@ -79,6 +81,7 @@ exports.createBlog = async (req, res) => {
 exports.getAllBlogs = async (req, res) => {
   try {
     const { page = 1, limit = 10, status, category, search } = req.query;
+
     
     const filter = {};
     if (status) filter.status = status;
@@ -91,12 +94,15 @@ exports.getAllBlogs = async (req, res) => {
     }
 
     const blogs = await Blog.find(filter)
-      .populate('author', 'name email')
+      .populate('author', 'firstName lastName profile email ')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
+
     const total = await Blog.countDocuments(filter);
+
+
 
     res.status(200).json({
       success: true,
