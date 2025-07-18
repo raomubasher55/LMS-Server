@@ -21,6 +21,15 @@ const saveFiles = (filesArray, folderName) => {
   });
 };
 
+// Helper function to generate a slug
+const generateSlug = (title) => {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove non-alphanumeric characters except spaces and hyphens
+    .trim() // Trim leading/trailing whitespace
+    .replace(/\s+/g, '-'); // Replace spaces with hyphens
+};
+
 // Create blog post
 exports.createBlog = async (req, res) => {
   try {
@@ -40,6 +49,9 @@ exports.createBlog = async (req, res) => {
 
     console.log("The authoer id is " , authorId);
 
+    // Generate slug from title
+    const slug = generateSlug(title);
+
     // Process featured image if uploaded
     const featuredImagePath = req.files && req.files.find(f => f.fieldname === "featuredImage")
       ? saveFiles(req.files.find(f => f.fieldname === "featuredImage"), "blog-images")[0]
@@ -48,6 +60,7 @@ exports.createBlog = async (req, res) => {
     const blog = new Blog({
       author: authorId,
       title,
+      slug, // Add the generated slug here
       content,
       excerpt,
       category,
@@ -125,9 +138,15 @@ exports.getAllBlogs = async (req, res) => {
 exports.getBlog = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const blog = await Blog.findById(id)
-      .populate('author', 'name email profileImage');
+    let blog;
+
+    // Check if the id is a valid MongoDB ObjectId
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      blog = await Blog.findById(id).populate('author', 'firstName lastName profile email');
+    } else {
+      // Assume it's a slug
+      blog = await Blog.findOne({ slug: id }).populate('author', 'firstName lastName profile email');
+    }
 
     if (!blog) {
       return res.status(404).json({
