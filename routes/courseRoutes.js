@@ -45,7 +45,7 @@ const upload = multer({
   fileFilter,
   limits: {
     files: 20,
-    fieldSize: 10 * 1024 * 1024, // 10 MB limit for text fields
+    fieldSize: 500 * 1024 * 1024, // 10 MB limit for text fields
     // fileSize: 500 * 1024 * 1024 // optional per-file limit
   },
 });
@@ -93,6 +93,7 @@ router.post(
   ...handleUploads,
   createCourse
 );
+
 
 // Get instructor courses route
 router.get("/instructor-courses", authMiddleware, restrictTo("instructor"), getInstructorCourses);

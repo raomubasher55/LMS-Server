@@ -92,7 +92,6 @@ function parseFormData(body) {
   return chapters.filter(Boolean);
 }
 
-
 // create courses
 
 exports.createCourse = async (req, res) => {
