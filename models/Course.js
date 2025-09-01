@@ -17,11 +17,11 @@ const courseSchema = new mongoose.Schema({
   benefits: { type: String, maxlength: 2000 },
   tags: [{ type: String }],
   startDate: { type: Date },
-  language: {
-    type: String,
-    enum: ["French", "English", "Français", "fr", "en"],
-    default: "French",
-  },
+language: {
+  type: String,
+  default: "French", // optional default
+},
+
   bannerImage: String,
   pdfFiles: [{ url: String, title: String }],
   certificateFile: String,
