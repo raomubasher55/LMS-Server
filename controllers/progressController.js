@@ -4,17 +4,16 @@ const Course = require('../models/Course');
 // Mark video as completed
 const markVideoCompleted = async (req, res) => {
   try {
-    const { courseId, chapterId } = req.body;
+    const { courseId, vimeoId } = req.body;
     const userId = req.user.id;
 
-    if (!courseId || !chapterId) {
+    if (!courseId || !vimeoId) {
       return res.status(400).json({
         success: false,
-        message: 'Course ID and Chapter ID are required'
+        message: 'Course ID and Vimeo ID are required'
       });
     }
 
-    // Find user and course
     const user = await User.findById(userId);
     const course = await Course.findById(courseId);
 
@@ -25,161 +24,100 @@ const markVideoCompleted = async (req, res) => {
       });
     }
 
-    // Check if user has access to the course
-    const hasEnrolledAccess = user.enrolledCourses.some(enrolled => 
-      enrolled && enrolled.toString() === courseId
-    );
-    const hasPurchasedAccess = user.purchasedCourses.some(purchased => 
-      purchased && purchased.course && purchased.course.toString() === courseId
+    // Find the chapter by video (vimeoId)
+    const chapter = course.chapters.find(ch =>
+      (ch.lessons || []).some(lesson => lesson.video?.vimeoId === vimeoId)
     );
 
-    if (!hasEnrolledAccess && !hasPurchasedAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You need to enroll in this course first.'
-      });
-    }
-
-    // Find the chapter in the course
-    const chapter = course.chapters.find(ch => ch._id.toString() === chapterId);
     if (!chapter) {
       return res.status(404).json({
         success: false,
-        message: 'Chapter not found'
+        message: 'Chapter not found for this video'
       });
     }
 
-    // Initialize progress tracking if not exists
-    if (!user.courseProgress) {
-      user.courseProgress = [];
-    }
+    const chapterId = chapter._id.toString();
 
-    // Find or create course progress
+    // ensure course progress exists
     let courseProgress = user.courseProgress.find(cp => cp.courseId.toString() === courseId);
     if (!courseProgress) {
       courseProgress = {
-        courseId: courseId,
+        courseId,
         completedChapters: [],
+        completedVideos: [],
         overallProgress: 0,
         lastAccessedAt: new Date()
       };
       user.courseProgress.push(courseProgress);
     }
 
-    // Mark chapter as completed if not already
-    if (!courseProgress.completedChapters.includes(chapterId)) {
+    if (!Array.isArray(courseProgress.completedVideos)) {
+      courseProgress.completedVideos = [];
+    }
+
+    // Mark video completed
+    if (!courseProgress.completedVideos.includes(vimeoId)) {
+      courseProgress.completedVideos.push(vimeoId);
+    }
+
+    // Check if all videos in this chapter are completed
+    const chapterVideoIds = (chapter.lessons || [])
+      .map(l => l.video?.vimeoId)
+      .filter(Boolean);
+
+    const allChapterVideosCompleted =
+      chapterVideoIds.length > 0 &&
+      chapterVideoIds.every(id => courseProgress.completedVideos.includes(id));
+
+    if (
+      allChapterVideosCompleted &&
+      !courseProgress.completedChapters.includes(chapterId)
+    ) {
       courseProgress.completedChapters.push(chapterId);
     }
-    
-    // Auto-complete chapter if it has no quiz (since video is now complete)
-    if (!chapter.quiz || chapter.quiz.length === 0) {
-      console.log(`Auto-completing chapter ${chapterId} - no quiz required`);
-    }
 
-    // Calculate overall progress based on videos, quizzes, and assignments
-    const totalChapters = course.chapters.length;
-    const completedChapters = courseProgress.completedChapters.length;
-    
-    // Get quiz progress
-    const quizProgressData = user.quizProgress?.filter(qp => qp.courseId.toString() === courseId) || [];
-    const passedQuizzes = quizProgressData.filter(qp => qp.passed).length;
-    
-    // Get assignment submissions
-    const totalAssignments = course.assignments?.length || 0;
-    
-    // Get actual submitted assignments for this course
-    const Submission = require('../models/Submission');
-    const submittedAssignments = await Submission.countDocuments({
-      student: userId,
-      assignment: { $in: course.assignments || [] },
-      status: { $in: ['submitted', 'graded'] }
-    });
-    
-    // Calculate total possible quiz chapters (chapters that have quizzes)
-    const totalQuizChapters = course.chapters.filter(ch => ch.quiz && ch.quiz.length > 0).length;
-    
-    // Calculate weighted progress based on what exists in the course
-    let videoWeight = 1.0;
-    let quizWeight = 0;
-    let assignmentWeight = 0;
-    
-    // Adjust weights based on course content
-    if (totalQuizChapters > 0 && totalAssignments > 0) {
-      // Course has both quizzes and assignments
-      videoWeight = 0.6;
-      quizWeight = 0.3;
-      assignmentWeight = 0.1;
-    } else if (totalQuizChapters > 0) {
-      // Course has quizzes but no assignments
-      videoWeight = 0.7;
-      quizWeight = 0.3;
-      assignmentWeight = 0;
-    } else if (totalAssignments > 0) {
-      // Course has assignments but no quizzes
-      videoWeight = 0.9;
-      quizWeight = 0;
-      assignmentWeight = 0.1;
-    }
-    // If course has neither quizzes nor assignments, videoWeight remains 1.0
-    
-    // Calculate progress components
-    const videoProgress = totalChapters > 0 ? (completedChapters / totalChapters) * 100 : 0;
-    const quizProgressPercent = totalQuizChapters > 0 ? (passedQuizzes / totalQuizChapters) * 100 : 0;
-    const assignmentProgress = totalAssignments > 0 ? (submittedAssignments / totalAssignments) * 100 : 0;
-    
-    // Calculate weighted overall progress
-    courseProgress.overallProgress = Math.round(
-      (videoProgress * videoWeight) + 
-      (quizProgressPercent * quizWeight) + 
-      (assignmentProgress * assignmentWeight)
-    );
+    // Recalculate overall progress
+    const allCourseVideos = course.chapters
+      .flatMap(ch => ch.lessons || [])
+      .map(l => l.video?.vimeoId)
+      .filter(Boolean);
+
+    const totalVideos = allCourseVideos.length;
+    const completedVideoCount = courseProgress.completedVideos.filter(id =>
+      allCourseVideos.includes(id)
+    ).length;
+
+    courseProgress.overallProgress =
+      totalVideos > 0
+        ? Math.round((completedVideoCount / totalVideos) * 100)
+        : 0;
+
     courseProgress.lastAccessedAt = new Date();
 
-    // Update the specific course enrollment/purchase with progress
-    if (hasPurchasedAccess) {
-      const purchasedCourse = user.purchasedCourses.find(purchased => 
-        purchased && purchased.course && purchased.course.toString() === courseId
-      );
-      if (purchasedCourse) {
-        purchasedCourse.progress = courseProgress.overallProgress;
-      }
-    }
-
     await user.save();
-
-    // Calculate total videos across all chapters
-    const totalVideos = course.chapters.reduce((total, chapter) => {
-      return total + (chapter.video ? 1 : 0);
-    }, 0);
 
     res.status(200).json({
       success: true,
       message: 'Video marked as completed',
       data: {
+        vimeoId,
         chapterId,
-        overallProgress: courseProgress.overallProgress,
-        completedChapters: courseProgress.completedChapters.length,
-        totalChapters: totalChapters,
-        totalVideos: totalVideos,
-        videoProgress: Math.round(videoProgress),
-        quizProgress: Math.round(quizProgressPercent),
-        assignmentProgress: Math.round(assignmentProgress),
-        passedQuizzes: passedQuizzes,
-        totalQuizzes: quizProgressData.length,
-        submittedAssignments: submittedAssignments,
-        totalAssignments: totalAssignments
+        completedVideos: courseProgress.completedVideos,
+        completedChapters: courseProgress.completedChapters,
+        overallProgress: courseProgress.overallProgress
       }
     });
-
-  } catch (error) {
-    console.error('Error marking video as completed:', error);
+  } catch (err) {
+    console.error('Error marking video as completed:', err);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
-      error: error.message
+      error: err.message
     });
   }
 };
+
+
 
 // Get user's progress for a course
 const getCourseProgress = async (req, res) => {
