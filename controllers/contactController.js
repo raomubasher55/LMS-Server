@@ -3,9 +3,9 @@ const Contact = require('../models/Contact');
 // Submit contact form (public endpoint)
 const submitContactForm = async (req, res) => {
   try {
-    const { name, email, message } = req.body;
+    const { name, email, message, phone, service } = req.body;
 
-    const newContact = await Contact.create({ name, email, message });
+    const newContact = await Contact.create({ name, email, message, phone,service  });
 
     res.status(201).json({
       success: true,
